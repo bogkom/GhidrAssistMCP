@@ -83,8 +83,8 @@ public final class RationalizedToolCatalog {
         action("types", "create_typedef", "create_typedef", "Create a typedef data type for an existing base type.").parameters("name", "category", "base_type").required("name", "base_type").mutation(false, false);
         action("types", "delete", "delete_data_type", "Delete a data type from the program; dependent data/type definitions can change.").parameters("name", "category").required("name").mutation(true, false);
 
-        tool("xrefs", "get_xrefs_to", "Get incoming references to an address, including reference types.").select("direction", "to").parameters("address", "limit").required("address").readOnly();
-        tool("xrefs", "get_xrefs_from", "Get outgoing references from an address, including reference types.").select("direction", "from").parameters("address", "limit").required("address").readOnly();
+        tool("xrefs", "get_xrefs_to", "Get incoming references to an address, including reference types.").select("direction", "to").parameters("address", "offset", "limit", "include_details").required("address").readOnly();
+        tool("xrefs", "get_xrefs_from", "Get outgoing references from an address, including reference types.").select("direction", "from").parameters("address", "offset", "limit", "include_details").required("address").readOnly();
         tool("xrefs", "get_callers", "List functions that directly call a named function.").select("direction", "to").parameters("function", "limit").required("function").readOnly();
         tool("xrefs", "get_callees", "List functions directly called by a named function.").select("direction", "from").parameters("function", "limit").required("function").readOnly();
         tool("xrefs", "get_call_graph", "Get a recursive caller/callee graph for a function; direction defaults to both and depth defaults to 2 (maximum 5).").select("include_calls", true).parameters("function", "direction", "depth").required("function").readOnly();
