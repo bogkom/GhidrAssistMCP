@@ -4,6 +4,8 @@
 package ghidrassistmcp.tools;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Map;
 
 import ghidra.program.model.address.Address;
@@ -42,7 +44,9 @@ public class GetBasicBlocksTool implements McpTool {
     public McpSchema.JsonSchema getInputSchema() {
         return new McpSchema.JsonSchema("object",
             Map.of(
-                "function", new McpSchema.JsonSchema("string", null, null, null, null, null)
+                "function", new McpSchema.JsonSchema("string", null, null, null, null, null),
+                "offset", Map.of("type", "integer", "minimum", 0),
+                "limit", Map.of("type", "integer", "minimum", 1, "maximum", 100)
             ),
             List.of("function"), null, null, null);
     }
@@ -56,6 +60,11 @@ public class GetBasicBlocksTool implements McpTool {
         }
 
         String functionIdentifier = (String) arguments.get("function");
+        int offset = arguments.get("offset") instanceof Number n ? n.intValue() : 0;
+        int limit = arguments.get("limit") instanceof Number n ? n.intValue() : 10;
+        if (offset < 0 || limit < 1 || limit > 100) {
+            return McpSchema.CallToolResult.builder().addTextContent("offset must be >= 0 and limit 1..100").isError(true).build();
+        }
 
         // Find the function
         Function function = findFunction(currentProgram, functionIdentifier);
@@ -74,11 +83,16 @@ public class GetBasicBlocksTool implements McpTool {
             CodeBlockIterator blocks = blockModel.getCodeBlocksContaining(
                 function.getBody(), TaskMonitor.DUMMY);
 
-            int blockCount = 0;
-
-            while (blocks.hasNext()) {
-                CodeBlock block = blocks.next();
-                blockCount++;
+            List<CodeBlock> allBlocks = new ArrayList<>();
+            while (blocks.hasNext()) allBlocks.add(blocks.next());
+            allBlocks.sort(Comparator.comparing(CodeBlock::getFirstStartAddress));
+            int totalCount = allBlocks.size();
+            int from = Math.min(offset, totalCount);
+            int to = (int) Math.min((long) totalCount, (long) from + limit);
+            int blockCount = from;
+            for (int blockIndex = from; blockIndex < to; blockIndex++) {
+                CodeBlock block = allBlocks.get(blockIndex);
+                blockCount = blockIndex + 1;
 
                 result.append("## Block ").append(blockCount).append("\n");
                 result.append("- **Start**: ").append(block.getFirstStartAddress()).append("\n");
@@ -118,8 +132,15 @@ public class GetBasicBlocksTool implements McpTool {
             }
 
             result.append("## Summary\n");
-            result.append("- Total Basic Blocks: ").append(blockCount).append("\n");
+            boolean hasMore = to < totalCount;
+            result.append("- Total Basic Blocks: ").append(totalCount).append("\n");
             result.append("- Function Size: ").append(function.getBody().getNumAddresses()).append(" addresses\n");
+            result.append("totalCount=").append(totalCount)
+                .append(" returnedCount=").append(to - from)
+                .append(" offset=").append(offset)
+                .append(" hasMore=").append(hasMore)
+                .append(" truncated=").append(hasMore)
+                .append(" nextOffset=").append(hasMore ? Integer.toString(to) : "null").append("\n");
 
         } catch (Exception e) {
             return McpSchema.CallToolResult.builder()
