@@ -4,6 +4,8 @@
  */
 package ghidrassistmcp.tools;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +70,16 @@ public class XrefsTool implements McpTool {
                     "description", "Optional: max call graph depth when include_calls is true (default 2, max 5)",
                     "default", 2
                 )),
+                Map.entry("offset", Map.of(
+                    "type", "integer",
+                    "minimum", 0,
+                    "description", "Zero-based offset into deterministically sorted address references (default 0)"
+                )),
+                Map.entry("include_details", Map.of(
+                    "type", "boolean",
+                    "description", "Include operand index, source type and primary flag for address references",
+                    "default", false
+                )),
                 Map.entry("limit", Map.of(
                     "type", "integer",
                     "description", "Maximum number of references to return (default 100)"
@@ -88,11 +100,18 @@ public class XrefsTool implements McpTool {
         String functionName = (String) arguments.get("function");
         String direction = (String) arguments.get("direction");
         int limit = 100;
+        int offset = 0;
+        boolean includeDetails = Boolean.TRUE.equals(arguments.get("include_details"));
+        if (arguments.get("offset") instanceof Number) {
+            offset = ((Number) arguments.get("offset")).intValue();
+        }
+        if (offset < 0) return error("offset must be non-negative");
 
         if (arguments.get("limit") instanceof Number) {
             limit = ((Number) arguments.get("limit")).intValue();
         }
 
+        if (limit < 1) return error("limit must be positive");
         if (direction == null || direction.isEmpty()) {
             direction = "both";
         }
@@ -130,75 +149,82 @@ public class XrefsTool implements McpTool {
         }
 
         // Otherwise, use address-based xrefs
-        return getAddressXrefs(currentProgram, addressStr, direction, limit);
+        return getAddressXrefs(currentProgram, addressStr, direction, limit, offset, includeDetails);
     }
 
     /**
      * Get cross-references for an address.
      */
-    private McpSchema.CallToolResult getAddressXrefs(Program program, String addressStr, String direction, int limit) {
-        // Parse the address
+    private static McpSchema.CallToolResult error(String message) {
+        return McpSchema.CallToolResult.builder().addTextContent(message).isError(true).build();
+    }
+
+    private static final Comparator<Reference> REFERENCE_ORDER =
+        Comparator.comparing(Reference::getFromAddress)
+            .thenComparing(Reference::getToAddress)
+            .thenComparingInt(Reference::getOperandIndex)
+            .thenComparing(ref -> ref.getReferenceType().toString());
+
+    private static String describeReference(Reference ref, boolean to, boolean details) {
+        StringBuilder out = new StringBuilder("  - ");
+        out.append(to ? "From: " : "To: ");
+        out.append(to ? ref.getFromAddress() : ref.getToAddress())
+           .append(" (").append(ref.getReferenceType()).append(")");
+        if (details) {
+            out.append(" operandIndex=").append(ref.getOperandIndex())
+               .append(" sourceType=").append(ref.getSource())
+               .append(" primary=").append(ref.isPrimary());
+        }
+        return out.append("\\n").toString();
+    }
+
+    private static void appendPage(StringBuilder result, List<Reference> refs,
+            boolean to, int offset, int limit, boolean details) {
+        refs.sort(REFERENCE_ORDER);
+        int total = refs.size();
+        int from = Math.min(offset, total);
+        int until = (int) Math.min((long) total, (long) from + limit);
+        for (int i = from; i < until; i++) {
+            result.append(describeReference(refs.get(i), to, details));
+        }
+        if (from == until) result.append("  No references on this page.\\n");
+        int returned = until - from;
+        boolean hasMore = until < total;
+        result.append("  totalCount=").append(total)
+              .append(" returnedCount=").append(returned)
+              .append(" offset=").append(offset)
+              .append(" hasMore=").append(hasMore)
+              .append(" truncated=").append(hasMore)
+              .append(" nextOffset=").append(hasMore ? until : "null")
+              .append("\\n");
+    }
+
+    private McpSchema.CallToolResult getAddressXrefs(Program program, String addressStr,
+            String direction, int limit, int offset, boolean details) {
         Address address;
         try {
             address = program.getAddressFactory().getAddress(addressStr);
-            if (address == null) {
-                return McpSchema.CallToolResult.builder()
-                    .addTextContent("Invalid address: " + addressStr)
-                    .build();
-            }
+            if (address == null) return error("Invalid address: " + addressStr);
         } catch (Exception e) {
-            return McpSchema.CallToolResult.builder()
-                .addTextContent("Error parsing address: " + e.getMessage())
-                .build();
+            return error("Error parsing address: " + e.getMessage());
         }
 
-        StringBuilder result = new StringBuilder();
-        result.append("Cross-references for ").append(addressStr).append(":\n\n");
-
-        // Get references TO this address
+        StringBuilder result = new StringBuilder("Cross-references for " + addressStr + ":\\n\\n");
         if (direction.equals("to") || direction.equals("both")) {
-            result.append("## References TO this address:\n");
-            ReferenceIterator refsTo = program.getReferenceManager().getReferencesTo(address);
-            int count = 0;
-
-            while (refsTo.hasNext() && count < limit) {
-                Reference ref = refsTo.next();
-                result.append("  - From: ").append(ref.getFromAddress())
-                      .append(" (").append(ref.getReferenceType()).append(")\n");
-                count++;
-            }
-
-            if (count == 0) {
-                result.append("  No references found.\n");
-            } else if (count >= limit) {
-                result.append("  ... (limited to ").append(limit).append(" results)\n");
-            }
-            result.append("\n");
+            result.append("## References TO this address:\\n");
+            List<Reference> refs = new ArrayList<>();
+            ReferenceIterator iterator = program.getReferenceManager().getReferencesTo(address);
+            while (iterator.hasNext()) refs.add(iterator.next());
+            appendPage(result, refs, true, offset, limit, details);
+            result.append("\\n");
         }
-
-        // Get references FROM this address
         if (direction.equals("from") || direction.equals("both")) {
-            result.append("## References FROM this address:\n");
-            Reference[] refsFrom = program.getReferenceManager().getReferencesFrom(address);
-            int count = 0;
-
-            for (Reference ref : refsFrom) {
-                if (count >= limit) break;
-                result.append("  - To: ").append(ref.getToAddress())
-                      .append(" (").append(ref.getReferenceType()).append(")\n");
-                count++;
-            }
-
-            if (count == 0) {
-                result.append("  No references found.\n");
-            } else if (count >= limit) {
-                result.append("  ... (limited to ").append(limit).append(" results)\n");
-            }
+            result.append("## References FROM this address:\\n");
+            List<Reference> refs = new ArrayList<>();
+            for (Reference ref : program.getReferenceManager().getReferencesFrom(address)) refs.add(ref);
+            appendPage(result, refs, false, offset, limit, details);
         }
-
-        return McpSchema.CallToolResult.builder()
-            .addTextContent(result.toString())
-            .build();
+        return McpSchema.CallToolResult.builder().addTextContent(result.toString()).build();
     }
 
     /**
