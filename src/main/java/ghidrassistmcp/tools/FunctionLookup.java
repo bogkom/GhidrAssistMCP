@@ -49,6 +49,10 @@ public final class FunctionLookup {
         } catch (Exception ignored) {
             // Continue through the name index when the identifier is not an address.
         }
+        if (name.matches("(?i)FUN_[0-9a-f]+")) {
+            String canonical = "FUN_" + name.substring(4).toLowerCase(java.util.Locale.ROOT);
+            return new Lookup(program, canonical, null).find();
+        }
         if (name.contains("::")) return findByQualifiedName(program, name);
         return new Lookup(program, name, null).find();
     }

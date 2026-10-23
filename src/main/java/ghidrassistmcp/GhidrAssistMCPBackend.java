@@ -80,6 +80,7 @@ import ghidrassistmcp.tools.RenameSymbolBatchTool;
 import ghidrassistmcp.tools.RenameSymbolTool;
 import ghidrassistmcp.tools.PatchBytesTool;
 import ghidrassistmcp.tools.SearchBytesTool;
+import ghidrassistmcp.tools.SearchInstructionsTool;
 import ghidrassistmcp.tools.SearchFunctionsByNameTool;
 import ghidrassistmcp.tools.SearchStringsTool;
 import ghidrassistmcp.tools.StructTool;
@@ -164,6 +165,7 @@ public class GhidrAssistMCPBackend implements McpBackend {
         registerTool(new RenameSymbolTool(decompilerService));
         registerTool(new RenameSymbolBatchTool(decompilerService)); // batch_rename
         registerTool(new SearchBytesTool());
+        registerTool(new SearchInstructionsTool());
         registerTool(new BookmarksTool());           // bookmarks (actions: list/set/remove)
         registerTool(new ClassTool());               // classes
 

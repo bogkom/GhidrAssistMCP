@@ -14,13 +14,25 @@ class RationalizedToolCatalogTest {
         try {
             var all = backend.getAllTools();
             var available = backend.getAvailableTools();
-            assertEquals(100, all.size());
-            assertEquals(93, available.size());
-            assertEquals(100, all.stream().map(McpSchema.Tool::name).distinct().count());
+            assertEquals(101, all.size());
+            assertEquals(94, available.size());
+            assertEquals(101, all.stream().map(McpSchema.Tool::name).distinct().count());
             Map<String, McpSchema.Tool> tools = available.stream().collect(Collectors.toMap(McpSchema.Tool::name, t -> t));
             Set<String> hidden = Set.of("get_code", "types", "struct", "comments", "variables", "xrefs", "classes", "bookmarks", "analysis_options", "analysis_control", "project_files", "scripts", "get_function_signature");
             assertTrue(tools.keySet().stream().noneMatch(hidden::contains));
             assertTrue(tools.get("get_pseudocode").annotations().readOnlyHint());
+            Map<?, ?> incoming = (Map<?, ?>) tools.get("get_xrefs_to").inputSchema().get("properties");
+            Map<?, ?> outgoing = (Map<?, ?>) tools.get("get_xrefs_from").inputSchema().get("properties");
+            for (Map<?, ?> schema : java.util.List.of(incoming, outgoing)) {
+                assertTrue(schema.containsKey("offset"));
+                assertTrue(schema.containsKey("limit"));
+                assertTrue(schema.containsKey("include_details"));
+            }
+            Map<?, ?> disassembly = (Map<?, ?>) tools.get("get_disassembly").inputSchema().get("properties");
+            assertTrue(disassembly.containsKey("start_address"));
+            assertTrue(disassembly.containsKey("end_address"));
+            assertTrue(disassembly.containsKey("max_instructions"));
+            assertTrue(disassembly.containsKey("offset"));
             assertTrue(tools.get("get_comment").annotations().readOnlyHint());
             assertFalse(tools.get("set_comment").annotations().readOnlyHint());
             assertTrue(tools.get("assemble_instructions").annotations().readOnlyHint());
