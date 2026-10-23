@@ -38,6 +38,13 @@ class FunctionLookupTest {
     }
 
     @Test
+    void defaultFunctionHexIdentifierIsCaseInsensitive() {
+        TestProgram testProgram = new TestProgram();
+        Function function = testProgram.function("FUN_0000abcd", 0xabcd, false, null);
+        assertSame(function, FunctionLookup.findByName(testProgram.program, "FUN_0000ABCD"));
+    }
+
+    @Test
     void returnsLowestAddressForDuplicateIndexedNames() {
         TestProgram testProgram = new TestProgram();
         Function higher = testProgram.function("duplicate", 0x200, false, null);
