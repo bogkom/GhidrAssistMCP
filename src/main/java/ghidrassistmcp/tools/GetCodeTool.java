@@ -92,7 +92,9 @@ public class GetCodeTool implements McpTool {
                 "start_address", Map.of("type", "string", "description", "Optional first instruction address for disassembly"),
                 "end_address", Map.of("type", "string", "description", "Optional inclusive final instruction address for disassembly"),
                 "offset", Map.of("type", "integer", "minimum", 0, "description", "Instruction offset in disassembly range"),
-                "max_instructions", Map.of("type", "integer", "minimum", 1, "description", "Maximum disassembly instructions returned per page")
+                "max_instructions", Map.of("type", "integer", "minimum", 1, "description", "Maximum disassembly instructions returned per page"),
+                "char_offset", Map.of("type", "integer", "minimum", 0, "description", "Character offset for paged pseudocode or pcode"),
+                "max_chars", Map.of("type", "integer", "minimum", 1, "description", "Maximum characters per pseudocode/pcode result (default 16000)")
             ),
             List.of("function", "format"), null, null, null);
     }
@@ -156,11 +158,11 @@ public class GetCodeTool implements McpTool {
         // Dispatch to appropriate handler based on format
         switch (format) {
             case "decompiler":
-                return getDecompiledCode(currentProgram, function, monitor);
+                return getDecompiledCode(currentProgram, function, arguments, monitor);
             case "disassembly":
                 return getDisassemblyCode(currentProgram, function, arguments, monitor);
             case "pcode":
-                return getPcodeRepresentation(currentProgram, function, raw, monitor);
+                return getPcodeRepresentation(currentProgram, function, arguments, raw, monitor);
             default:
                 return McpSchema.CallToolResult.builder()
                     .addTextContent("Unknown format: " + format)
@@ -172,7 +174,7 @@ public class GetCodeTool implements McpTool {
     /**
      * Get decompiled C-like code for a function.
      */
-    private McpSchema.CallToolResult getDecompiledCode(Program program, Function function, TaskMonitor monitor) {
+    private McpSchema.CallToolResult getDecompiledCode(Program program, Function function, Map<String, Object> args, TaskMonitor monitor) {
         try (DecompilerSession session = decompilerService.open(function.getProgram())) {
             DecompileResults results = session.decompiler().decompileFunction(function,
                 session.options().getDefaultTimeout(), monitor);
@@ -204,7 +206,7 @@ public class GetCodeTool implements McpTool {
             }
 
             return McpSchema.CallToolResult.builder()
-                .addTextContent("Decompiled function " + function.getName(true) + ":\n\n" + decompiledCode)
+                .addTextContent(paginateText("Decompiled function " + function.getName(true) + ":\n\n" + decompiledCode, args))
                 .build();
 
         } catch (Exception e) {
@@ -242,7 +244,7 @@ public class GetCodeTool implements McpTool {
                 .isError(true).build();
         }
         int offset = arguments.get("offset") instanceof Number n ? n.intValue() : 0;
-        int max = arguments.get("max_instructions") instanceof Number n ? n.intValue() : Integer.MAX_VALUE;
+        int max = arguments.get("max_instructions") instanceof Number n ? n.intValue() : 100;
         if (offset < 0 || max < 1) {
             return McpSchema.CallToolResult.builder().addTextContent("offset must be >= 0 and max_instructions >= 1")
                 .isError(true).build();
@@ -287,7 +289,7 @@ public class GetCodeTool implements McpTool {
     /**
      * Get P-Code representation for a function.
      */
-    private McpSchema.CallToolResult getPcodeRepresentation(Program program, Function function, boolean raw, TaskMonitor monitor) {
+    private McpSchema.CallToolResult getPcodeRepresentation(Program program, Function function, Map<String, Object> args, boolean raw, TaskMonitor monitor) {
         StringBuilder result = new StringBuilder();
         result.append("P-Code for: ").append(function.getName(true))
               .append(" @ ").append(function.getEntryPoint()).append("\n\n");
@@ -366,8 +368,26 @@ public class GetCodeTool implements McpTool {
         }
 
         return McpSchema.CallToolResult.builder()
-            .addTextContent(result.toString())
+            .addTextContent(paginateText(result.toString(), args))
             .build();
+    }
+
+    /** Bounded result pages preserve complete source text without downstream truncation. */
+    private static String paginateText(String content, Map<String,Object> args) {
+        int offset = args.get("char_offset") instanceof Number n ? n.intValue() : 0;
+        int max = args.get("max_chars") instanceof Number n ? n.intValue() : 16000;
+        if (offset < 0 || max < 1 || max > 64000)
+            return "ERROR: char_offset must be >=0 and max_chars must be 1..64000";
+        int from = Math.min(offset, content.length());
+        int to = (int) Math.min(content.length(), (long) from + max);
+        boolean hasMore = to < content.length();
+        return content.substring(from, to)
+            + "\\n\\nPAGINATION totalCharacters=" + content.length()
+            + " returnedCharacters=" + (to-from)
+            + " charOffset=" + offset
+            + " hasMore=" + hasMore
+            + " truncated=" + hasMore
+            + " nextCharOffset=" + (hasMore ? Integer.toString(to) : "null");
     }
 
     private static McpSchema.CallToolResult cancelledResult() {
