@@ -69,6 +69,17 @@ public class GetFunctionInfoTool implements McpTool {
         info.append("Name: ").append(function.getName(true)).append("\n");
         info.append("Entry Point: ").append(function.getEntryPoint()).append("\n");
         info.append("Body: ").append(function.getBody()).append("\n");
+        info.append("Body Min: ").append(function.getBody().getMinAddress()).append("\n");
+        info.append("Body Max: ").append(function.getBody().getMaxAddress()).append("\n");
+        info.append("Body Size (bytes): ").append(function.getBody().getNumAddresses()).append("\n");
+        if (function.getBody().getMinAddress().getAddressSpace()
+                .equals(function.getBody().getMaxAddress().getAddressSpace())) {
+            long min = function.getBody().getMinAddress().getOffset();
+            long max = function.getBody().getMaxAddress().getOffset();
+            info.append("Body Range Ordered: ").append(Long.compareUnsigned(min, max) <= 0).append("\n");
+            if (Long.compareUnsigned(min, max) <= 0)
+                info.append("Inclusive Span (bytes): ").append(Long.toUnsignedString(max - min + 1)).append("\n");
+        }
         info.append("Parameter Count: ").append(function.getParameterCount()).append("\n");
         info.append("Return Type: ").append(function.getReturnType()).append("\n");
         info.append("Signature: ").append(function.getSignature()).append("\n");
