@@ -1,6 +1,9 @@
 name: Build GhidrAssistMCP for Ghidra 12.1.4
 on:
   pull_request:
+  push:
+    branches:
+      - codex/decompiler-contract-regression
   workflow_dispatch:
 jobs:
   build:
@@ -38,8 +41,20 @@ jobs:
           files=(dist/*GhidrAssistMCP*.zip)
           test "${#files[@]}" -eq 1
           unzip -tq "${files[0]}"
+          mapfile -t roots < <(unzip -Z1 "${files[0]}" | awk -F/ 'NF {print $1}' | sort -u)
+          test "${#roots[@]}" -eq 1 && test "${roots[0]}" = GhidrAssistMCP
+          unzip -p "${files[0]}" GhidrAssistMCP/extension.properties > "$RUNNER_TEMP/mcp-extension.properties"
+          grep -Fxq 'version=12.1.4' "$RUNNER_TEMP/mcp-extension.properties"
+          unzip -p "${files[0]}" GhidrAssistMCP/lib/GhidrAssistMCP-3.0.0.jar > "$RUNNER_TEMP/GhidrAssistMCP.jar"
+          jar tf "$RUNNER_TEMP/GhidrAssistMCP.jar" | grep -Fxq 'ghidrassistmcp/GhidrAssistMCPPlugin.class'
+          mkdir -p "$RUNNER_TEMP/install-check"
+          unzip -q "${files[0]}" -d "$RUNNER_TEMP/install-check"
+          test -f "$RUNNER_TEMP/install-check/GhidrAssistMCP/extension.properties"
+          test -f "$RUNNER_TEMP/install-check/GhidrAssistMCP/lib/GhidrAssistMCP-3.0.0.jar"
+          test -f "$RUNNER_TEMP/install-check/GhidrAssistMCP/ghidra_scripts/GAMCPStartServerScript.java"
           cd dist
           sha256sum *GhidrAssistMCP*.zip > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: GhidrAssistMCP-Ghidra-12.1.4-${{ github.run_id }}
