@@ -382,7 +382,7 @@ public class GetCodeTool implements McpTool {
         int to = (int) Math.min(content.length(), (long) from + max);
         boolean hasMore = to < content.length();
         return content.substring(from, to)
-            + "\\n\\nPAGINATION totalCharacters=" + content.length()
+            + "\n\nPAGINATION totalCharacters=" + content.length()
             + " returnedCharacters=" + (to-from)
             + " charOffset=" + offset
             + " hasMore=" + hasMore
