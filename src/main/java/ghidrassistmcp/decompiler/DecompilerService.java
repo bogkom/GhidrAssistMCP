@@ -48,6 +48,7 @@ public final class DecompilerService {
 
         ServiceProvider serviceProvider = serviceProviderResolver.apply(program);
         DecompileOptions options = optionsResolver.apply(serviceProvider, program);
+        DecompilerRegressionProfile.apply(options, DecompilerRegressionProfile.activeProfile());
         DecompInterface decompiler = decompilerFactory.get();
         boolean opened = false;
         try {
@@ -74,7 +75,8 @@ public final class DecompilerService {
                 ? serviceProvider.getService(OptionsService.class)
                 : null;
         if (optionsService == null) {
-            return "program-defaults";
+            String regressionProfile = DecompilerRegressionProfile.activeProfile();
+            return regressionProfile == null ? "program-defaults" : "regression-profile:" + regressionProfile;
         }
 
         MessageDigest digest;
@@ -85,6 +87,7 @@ public final class DecompilerService {
             throw new AssertionError("SHA-256 is required by the Java runtime", e);
         }
 
+        updateDigest(digest, DecompilerRegressionProfile.activeProfile());
         updateDigest(digest, optionsService.getOptions("Decompiler"));
         updateDigest(digest, optionsService.getOptions(GhidraOptions.CATEGORY_BROWSER_FIELDS));
         return java.util.HexFormat.of().formatHex(digest.digest());
